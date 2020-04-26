@@ -1,0 +1,2 @@
+# try for x11 server
+docker run -e DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix jetsondockertest:test-1.0 --user="$(id --user):$(id --group)"
