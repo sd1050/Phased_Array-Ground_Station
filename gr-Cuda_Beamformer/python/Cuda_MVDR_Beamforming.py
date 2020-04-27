@@ -63,33 +63,69 @@ class Cuda_MVDR_Beamforming(gr.decim_block):
 
     def mapped_host_malloc(self, num_samples):
         self.mapped_host_input = \
-        pycuda.driver.pagelocked_zeros(
-        num_samples,
-        self.sample_type,
-        mem_flags = pycuda.driver.host_alloc_flags.DEVICEMAP)
+            pycuda.driver.pagelocked_zeros(
+                num_samples,
+                self.sample_type,
+                mem_flags = pycuda.driver.host_alloc_flags.DEVICEMAP)
         self.mapped_host_output = \
-        pycuda.driver.pagelocked_zeros(
-        num_samples,
-        self.sample_type,
-        mem_flags = pycuda.driver.host_alloc_flags.DEVICEMAP)
+            pycuda.driver.pagelocked_zeros(
+                num_samples,
+                self.sample_type,
+                mem_flags = pycuda.driver.host_alloc_flags.DEVICEMAP)
         self.mapped_gpu_input = self.mapped_host_input.base.get_device_pointer()
         self.mapped_gpu_output = self.mapped_host_output.base.get_device_pointer()
+        
+        # saves number of samples in an instance, kernel operates on 32-bit fp values so we have x2 option
         self.num_samples = num_samples;
         self.num_floats = self.num_samples;
         if (self.sample_type == numpy.complex64):
             # If we're processing complex data, we have two floats for every sample...
             self.num_floats *= 2
-            self.num_blocks = self.num_floats / self.threads_per_block
-            left_over_samples = self.num_floats % self.threads_per_block
+     
+        # this segment computes grid and block dimensions for CUDA kernel (1D)
+        self.num_blocks = self.num_floats / self.threads_per_block
+        left_over_samples = self.num_floats % self.threads_per_block
         if (left_over_samples != 0):
             # If vector length is not an even multiple of the number of threads in a
             # block, we need to add another block to process the "leftover" samples.
             self.num_blocks += 1
 
+    # allows code to recover from unexpected memory situations
+    def mapped_host_realloc(self, num_samples):
+        del self.mapped_host_input
+        del self.mapped_host_output
+        self.mapped_host_malloc(num_samples)
+
     def work(self, input_items, output_items):
+        # input_item[0] refers to data on input #1, etc.
         in0 = input_items[0]
+        in1 = input_items[1]
+        in2 = input_items[2]
+        in3 = input_items[3]
+
         out = output_items[0]
-        # <+signal processing here+>
-        out[:] = in0
-        return len(output_items[0])
+        # taking the sum of samples and vectors received from each port
+        recv_vectors = in0.shape[0] + in1.shape[0] + in2.shape[0] + in3.shape[0]
+        recv_samples = in0.shape[1] + in1.shape[1] + in2.shape[1] + in3.shape[1]
+        self.context.push()
+        # prevent self-destruction of memory allocation
+        if (recv_samples > self.num_samples):
+            print "Warning: Not Enough GPU Memory Allocated. Reallocating..."
+            print "-> Required Space: %d Samples" % recv_samples
+            print "-> Allocated Space: %d Samples" % self.num_samples
+            self.mapped_host_realloc(recv_samples)
+        for i in range(0, recv_vectors):
+        self.mapped_host_input[0:recv_samples] = in0[i, 0:recv_samples]
+        self.kernel.prepared_call((self.num_blocks, 1, 1),
+                                    (self.threads_per_block, 1, 1),
+                                    self.mapped_gpu_input,
+                                    self.mapped_gpu_output,
+                                    self.num_floats)
+        self.context.synchronize()
+        out[i, 0:recv_samples] = self.mapped_host_output[0:recv_samples]
+        self.context.pop()
+        return recv_vectors
+        
+        # out[:] = in0
+        # return len(output_items[0])
 
