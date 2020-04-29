@@ -1,0 +1,21 @@
+name: cusignal
+channels:
+  - conda-forge
+  - nvidia
+  - defaults
+  - numba
+  - c4aarch64
+dependencies:
+  - python=3.6.9
+  - scipy
+  - numpy
+  - matplotlib
+  - numba
+  - pytest
+  - sphinx
+  - sphinx_rtd_theme
+  - numpydoc
+  - ipython
+  - pip
+  - pip:
+    - cupy>=6.2.0

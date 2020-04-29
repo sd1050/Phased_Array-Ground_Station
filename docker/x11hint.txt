@@ -1,0 +1,4 @@
+# try for x11 server
+docker run -e DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix jetsondockertest:test-1.0 --user="$(id --user):$(id --group)"
+# this one works
+docker run -it --volume /mnt/c/Users/sd1050/Desktop/Ground_Station:/home/capstone01/Ground_Station -e DISPLAY=$DISPLAY sd1050/ground_station:test-1.0
